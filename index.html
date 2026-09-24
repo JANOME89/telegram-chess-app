@@ -59,6 +59,8 @@
       </button>
     </div>
 
+    <button class="online-btn" id="btn-online">🌍 Играть онлайн</button>
+
     <button class="start-btn" id="btn-start">Начать игру</button>
 
     <button class="settings-link glass" id="btn-open-settings">
@@ -166,6 +168,26 @@
       </div>
     </div>
   </section>
+
+  <!-- Online matchmaking / invite modal -->
+  <div id="online-modal" class="modal hidden">
+    <div class="modal-box glass online-box">
+      <div class="big-spinner" id="online-spinner"></div>
+      <h3 id="online-title">Поиск соперника…</h3>
+      <p class="online-sub" id="online-sub">Подбираем равного по силе игрока</p>
+      <div class="invite-row hidden" id="invite-row">
+        <input id="invite-link" readonly />
+        <div class="invite-btns">
+          <button class="btn btn-ghost" id="invite-copy">Копировать</button>
+          <button class="btn btn-ghost" id="invite-share">Отправить</button>
+        </div>
+      </div>
+      <div class="overlay-actions">
+        <button class="btn btn-ghost" id="invite-friend">Пригласить друга</button>
+        <button class="btn btn-primary" id="online-cancel">Отмена</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Promotion modal -->
   <div id="promo-modal" class="modal hidden">

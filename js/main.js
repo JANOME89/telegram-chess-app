@@ -3,7 +3,10 @@ import { injectSprite, pieceSVG } from './pieces.js';
 import { Board } from './board.js';
 import { Engine } from './engine.js';
 import { SoundFX } from './sound.js';
+import { Net } from './net.js';
+import { CONFIG } from './config.js';
 import {
+  tg, inTelegram,
   initTelegram, showMainButton, hideMainButton, showBackButton, hideBackButton,
   getUser, haptic, setTgSettings,
 } from './tg.js';
@@ -22,6 +25,10 @@ const state = {
   selected: null,
   legalTargets: [],
   busy: false,
+  // online
+  net: null,
+  room: null,
+  myColor: 'w',
 };
 
 const sound = new SoundFX();
@@ -92,11 +99,15 @@ function fillProfile() {
 
 // ================= game lifecycle =================
 function startGame(mode) {
+  leaveOnline();
   state.mode = mode;
   state.game = new Chess();
   state.selected = null;
   state.legalTargets = [];
   state.busy = false;
+  $('overlay-new').classList.remove('hidden');
+  $('btn-undo').disabled = false;
+  $('btn-undo').style.opacity = '1';
   board.setOrientation('w');
   board.fullRender(state.game.board());
   board.clearHighlights();
@@ -112,6 +123,7 @@ function startGame(mode) {
 function isHumanTurn() {
   if (state.busy || state.game.isGameOver()) return false;
   if (state.mode === 'local') return true;
+  if (state.mode === 'online') return !!state.net?.open && state.game.turn() === state.myColor;
   return state.game.turn() === state.playerColor;
 }
 
@@ -163,11 +175,14 @@ function attemptMove(from, to) {
   doMove({ from, to });
 }
 
-function doMove(obj) {
+function doMove(obj, origin = 'local') {
   let m;
   try { m = state.game.move(obj); }
   catch (_) { clearSelection(); return null; }
   board.applyMove(m);
+  if (state.mode === 'online' && origin === 'local') {
+    state.net?.send({ t: 'move', move: { from: m.from, to: m.to, promotion: m.promotion } });
+  }
   if (m.captured) { sound.play('capture'); haptic('medium'); }
   else if (m.flags.includes('k') || m.flags.includes('q')) { sound.play('castle'); haptic('light'); }
   else { sound.play('move'); haptic('light'); }
@@ -203,12 +218,19 @@ function endGame() {
   let title = 'Игра окончена', sub = '';
   if (g.isCheckmate()) {
     const winnerWhite = g.turn() === 'b';
-    title = 'Мат!';
-    sub = state.mode === 'bot'
-      ? (winnerWhite ? 'Вы победили 🎉' : 'Бот победил')
-      : (winnerWhite ? 'Белые победили' : 'Чёрные победили');
-    haptic(winnerWhite || state.mode === 'local' ? 'success' : 'error');
-  } else if (g.isStalemate()) { title = 'Пат'; sub = 'Ничья'; haptic('warning'); }
+    if (state.mode === 'online') {
+      const myWin = winnerWhite === (state.myColor === 'w');
+      title = myWin ? 'Победа!' : 'Поражение!';
+      sub = 'Мат';
+      haptic(myWin ? 'success' : 'error');
+    } else {
+      title = 'Мат!';
+      sub = state.mode === 'bot'
+        ? (winnerWhite ? 'Вы победили 🎉' : 'Бот победил')
+        : (winnerWhite ? 'Белые победили' : 'Чёрные победили');
+      haptic(winnerWhite || state.mode === 'local' ? 'success' : 'error');
+    }
+  } else if (g.isStalemate()) { title = state.mode === 'online' ? 'Ничья' : 'Пат'; sub = 'Ничья'; haptic('warning'); }
   else if (g.isThreefoldRepetition()) { title = 'Ничья'; sub = 'Повторение позиции'; haptic('warning'); }
   else if (g.isInsufficientMaterial()) { title = 'Ничья'; sub = 'Недостаточно материала'; haptic('warning'); }
   else if (g.isDraw()) { title = 'Ничья'; sub = 'Правило 50 ходов'; haptic('warning'); }
@@ -221,6 +243,16 @@ function endGame() {
 
 function resign() {
   if (state.game.isGameOver() || state.busy) return;
+  if (state.mode === 'online') {
+    state.net?.send({ t: 'resign' });
+    $('overlay-title').textContent = 'Поражение!';
+    $('overlay-sub').textContent = 'Вы сдались';
+    $('overlay').classList.remove('hidden');
+    state.busy = true;
+    sound.play('end');
+    haptic('error');
+    return;
+  }
   const loserWhite = state.game.turn() === 'w';
   $('overlay-title').textContent = 'Сдался';
   $('overlay-sub').textContent = state.mode === 'bot'
@@ -233,7 +265,7 @@ function resign() {
 }
 
 function undo() {
-  if (state.busy) return;
+  if (state.busy || state.mode === 'online') return;
   state.game.undo();
   if (state.mode === 'bot' && state.game.turn() !== state.playerColor && state.game.history().length) {
     state.game.undo();
@@ -315,6 +347,7 @@ function renderStatus() {
   const turn = state.game.turn();
   let text = turn === 'w' ? 'Ход белых' : 'Ход чёрных';
   if (state.mode === 'bot') text = turn === state.playerColor ? 'Ваш ход' : 'Ход бота';
+  if (state.mode === 'online') text = turn === state.myColor ? 'Ваш ход' : 'Ход соперника';
   if (state.game.inCheck() && !state.game.isGameOver()) text += ' · шах!';
   if (state.game.isGameOver()) text = 'Партия окончена';
   $('status-pill').textContent = text;
@@ -346,6 +379,118 @@ function openPromotion(from, to, color) {
   $('promo-modal').classList.remove('hidden');
 }
 
+// ================= online multiplayer =================
+function onlineModal(show) { $('online-modal').classList.toggle('hidden', !show); }
+
+function setOnlineStatus(title, sub, spinning) {
+  $('online-title').textContent = title;
+  $('online-sub').textContent = sub || '';
+  $('online-sub').classList.toggle('hidden', !sub);
+  $('online-spinner').classList.toggle('hidden', !spinning);
+}
+
+function inviteLink(room) { return `${CONFIG.botAppLink}?startapp=${room}`; }
+
+function ensureNet() {
+  if (state.net) return state.net;
+  const net = new Net(CONFIG.wsUrl);
+  state.net = net;
+  net.on('start', ({ room, color }) => { onlineModal(false); beginOnline(room, color); });
+  net.on('created', ({ room }) => {
+    state.room = room;
+    $('invite-link').value = inviteLink(room);
+    $('invite-row').classList.remove('hidden');
+    $('invite-friend').classList.add('hidden');
+    setOnlineStatus('Ожидание друга…', 'Отправьте ссылку сопернику', true);
+  });
+  net.on('queued', () => setOnlineStatus('Поиск соперника…', 'Подбираем равного по силе игрока', true));
+  net.on('error', ({ msg }) => { onlineModal(false); state.net?.close(); state.net = null; alert(msg || 'Ошибка подключения'); });
+  net.on('move', ({ move }) => { if (state.mode === 'online') doMove(move, 'remote'); });
+  net.on('resign', () => {
+    if (state.mode !== 'online' || state.game.isGameOver()) return;
+    $('overlay-title').textContent = 'Победа!';
+    $('overlay-sub').textContent = 'Соперник сдался';
+    $('overlay').classList.remove('hidden');
+    state.busy = true; sound.play('end'); haptic('success');
+  });
+  net.on('opponent-left', () => {
+    if (state.mode !== 'online' || state.game.isGameOver()) return;
+    $('overlay-title').textContent = 'Победа!';
+    $('overlay-sub').textContent = 'Соперник отключился';
+    $('overlay').classList.remove('hidden');
+    state.busy = true; sound.play('end'); haptic('success');
+  });
+  net.on('close', () => {
+    if (state.mode === 'online' && !state.game.isGameOver()) {
+      $('overlay-title').textContent = 'Связь потеряна';
+      $('overlay-sub').textContent = 'Сервер недоступен';
+      $('overlay').classList.remove('hidden');
+      state.busy = true;
+    }
+  });
+  return net;
+}
+
+async function openOnlineSearch() {
+  onlineModal(true);
+  $('invite-row').classList.add('hidden');
+  $('invite-friend').classList.remove('hidden');
+  setOnlineStatus('Поиск соперника…', 'Подбираем равного по силе игрока', true);
+  const net = ensureNet();
+  try { await net.connect(); net.send({ t: 'queue' }); }
+  catch (_) { setOnlineStatus('Нет соединения', 'Сервер недоступен', false); }
+}
+
+async function inviteFriend() {
+  const net = ensureNet();
+  if (!net.open) {
+    try { await net.connect(); }
+    catch (_) { setOnlineStatus('Нет соединения', 'Сервер недоступен', false); return; }
+  }
+  net.send({ t: 'create' });
+}
+
+async function joinRoom(room) {
+  onlineModal(true);
+  $('invite-row').classList.add('hidden');
+  $('invite-friend').classList.add('hidden');
+  setOnlineStatus('Подключение к комнате…', room, true);
+  const net = ensureNet();
+  try { await net.connect(); net.send({ t: 'join', room }); }
+  catch (_) { onlineModal(false); }
+}
+
+function beginOnline(room, color) {
+  state.mode = 'online';
+  state.room = room;
+  state.myColor = color;
+  state.game = new Chess();
+  state.selected = null;
+  state.legalTargets = [];
+  state.busy = false;
+  board.setOrientation(color);
+  board.fullRender(state.game.board());
+  board.clearHighlights();
+  $('overlay').classList.add('hidden');
+  $('thinking').classList.add('hidden');
+  $('overlay-new').classList.add('hidden');
+  $('btn-undo').disabled = true;
+  $('btn-undo').style.opacity = '0.4';
+  $('game-title').textContent = `Онлайн · ${room}`;
+  renderStrips();
+  renderStatus();
+  showScreen('game');
+  haptic('success');
+}
+
+function leaveOnline() {
+  if (state.mode === 'online') {
+    state.net?.close();
+    state.net = null;
+    state.room = null;
+  }
+}
+
 // ================= UI wiring =================
 document.querySelectorAll('.mode-card').forEach((card) => {
   card.addEventListener('click', () => {
@@ -358,7 +503,27 @@ document.querySelectorAll('.mode-card').forEach((card) => {
 $('btn-start').addEventListener('click', () => startGame(state.mode));
 $('btn-open-settings').addEventListener('click', () => showScreen('settings'));
 $('btn-back-settings').addEventListener('click', () => showScreen('menu'));
-$('btn-back-game').addEventListener('click', () => showScreen('menu'));
+$('btn-back-game').addEventListener('click', () => { leaveOnline(); showScreen('menu'); });
+
+// online
+$('btn-online').addEventListener('click', openOnlineSearch);
+$('online-cancel').addEventListener('click', () => { onlineModal(false); leaveOnline(); });
+$('invite-friend').addEventListener('click', inviteFriend);
+$('invite-copy').addEventListener('click', () => {
+  navigator.clipboard?.writeText($('invite-link').value);
+  haptic('light');
+});
+$('invite-share').addEventListener('click', () => {
+  const link = $('invite-link').value;
+  if (inTelegram) {
+    tg.openTelegramLink('https://t.me/share/url?url=' + encodeURIComponent(link) +
+      '&text=' + encodeURIComponent('Погнали в шахматы!'));
+  } else if (navigator.share) {
+    navigator.share({ url: link });
+  } else {
+    navigator.clipboard?.writeText(link);
+  }
+});
 $('btn-flip').addEventListener('click', () => {
   board.flip();
   board.fullRender(state.game.board());
@@ -369,7 +534,7 @@ $('btn-flip').addEventListener('click', () => {
 $('btn-undo').addEventListener('click', undo);
 $('btn-resign').addEventListener('click', resign);
 $('overlay-new').addEventListener('click', () => startGame(state.mode));
-$('overlay-menu').addEventListener('click', () => showScreen('menu'));
+$('overlay-menu').addEventListener('click', () => { leaveOnline(); showScreen('menu'); });
 
 $('set-sound').addEventListener('change', (e) => {
   state.sound = e.target.checked; sound.enabled = state.sound; saveSettings();
@@ -398,4 +563,8 @@ injectSprite();
 initTelegram();
 loadSettings();
 fillProfile();
-showScreen('menu');
+
+// deep-link join: Telegram start_param (?startapp=ROOM) or ?room=ROOM for browser tests
+const startParam = tg?.initDataUnsafe?.start_param || new URLSearchParams(location.search).get('room');
+if (startParam) joinRoom(startParam);
+else showScreen('menu');
