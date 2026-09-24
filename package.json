@@ -1,0 +1,13 @@
+{
+  "name": "ultimate-chess-ws",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dependency-free WebSocket room server for Ultimate Chess Telegram Mini App",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
