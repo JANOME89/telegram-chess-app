@@ -1,0 +1,6 @@
+# Секреты и локальное состояние — никогда не публиковать
+server/.env
+server/tournaments.json
+server/*.probe
+node_modules/
+*.log
