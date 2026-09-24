@@ -50,8 +50,12 @@ const AUTH_MAX_AGE = 24 * 3600; // seconds
 // protected (e.g. Windows "Controlled Folder Access" on Documents), fall back
 // to the OS temp dir so state still survives restarts instead of silently failing.
 function resolveDataFile() {
-  try { fs.writeFileSync(DATA_FILE, fs.existsSync(DATA_FILE) ? fs.readFileSync(DATA_FILE) : ''); return DATA_FILE; }
-  catch (_) {
+  const probe = DATA_FILE + '.probe';
+  try {
+    fs.writeFileSync(probe, '1');
+    fs.unlinkSync(probe);
+    return DATA_FILE;
+  } catch (_) {
     const alt = path.join(os.tmpdir(), 'ultimate-chess-tournaments.json');
     console.warn(`[chess-ws] ${DATA_FILE} is not writable (folder protection?); persisting to ${alt}`);
     return alt;
@@ -83,7 +87,9 @@ function persist() {
 function load() {
   try {
     if (!fs.existsSync(dataFile)) return;
-    const data = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
+    const raw = fs.readFileSync(dataFile, 'utf8').trim();
+    if (!raw) return;
+    const data = JSON.parse(raw);
     tournaments = new Map((data.tournaments || []).map((t) => [t.id, t]));
     payouts = data.payouts || [];
     console.log(`[chess-ws] loaded ${tournaments.size} tournaments, ${payouts.length} payouts`);
