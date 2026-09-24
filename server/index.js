@@ -2,13 +2,15 @@
 // Implements minimal RFC6455 framing so no npm install is required:
 //   node index.js                 (PORT env optional, default 8787)
 //
-// Env:
+// Config can come from real env vars OR from a `server/.env` file (env wins).
 //   PORT            listen port (default 8787)
 //   TG_BOT_TOKEN    bot token from @BotFather — enables real initData validation.
 //                   When UNSET the server runs in DEV mode and trusts client-declared
 //                   identity (browser testing only — NEVER in production).
 //   ADMIN_ID        Telegram user id allowed to use the admin panel (server-enforced).
 //   DATA_FILE       persistence path (default ./tournaments.json next to this file)
+//   SSL_CERT/SSL_KEY  paths to a TLS cert+key → serves wss:// directly (optional;
+//                   otherwise terminate TLS in a reverse proxy like nginx/Caddy).
 //
 // Protocol (JSON), see onMessage() for the authoritative list.
 const http = require('http');
@@ -17,9 +19,24 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+// Minimal .env loader (zero dependencies). Real env vars take precedence.
+(function loadEnvFile() {
+  try {
+    const p = path.join(__dirname, '.env');
+    if (!fs.existsSync(p)) return;
+    for (const line of fs.readFileSync(p, 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+      if (!m || line.trim().startsWith('#')) continue;
+      let v = m[2];
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+      if (process.env[m[1]] === undefined) process.env[m[1]] = v;
+    }
+  } catch (_) { /* .env is optional */ }
+})();
+
 const PORT = process.env.PORT || 8787;
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
-const BOT_TOKEN = process.env.TG_BOT_TOKEN || '';
+const BOT_TOKEN = (process.env.TG_BOT_TOKEN || '').trim();
 const DEV_MODE = !BOT_TOKEN;
 // ⬇️ OWNER: your Telegram user id. Server-enforced — every admin operation is
 // rejected unless the signed initData carries exactly this id. The ADMIN_ID env
@@ -657,10 +674,21 @@ function onDisconnect(sock) {
 }
 
 // ================= HTTP + upgrade =================
-const server = http.createServer((req, res) => {
+const handler = (req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('ultimate-chess-ws' + (DEV_MODE ? ' (dev: initData validation OFF)' : ''));
-});
+};
+
+// Optional direct TLS: set SSL_CERT + SSL_KEY to serve wss:// without a proxy.
+const SSL_CERT = process.env.SSL_CERT, SSL_KEY = process.env.SSL_KEY;
+let server;
+if (SSL_CERT && SSL_KEY) {
+  server = require('https').createServer(
+    { cert: fs.readFileSync(SSL_CERT), key: fs.readFileSync(SSL_KEY) }, handler);
+} else {
+  server = http.createServer(handler);
+}
+const TLS_ON = !!(SSL_CERT && SSL_KEY);
 
 server.on('upgrade', (req, socket) => {
   const key = req.headers['sec-websocket-key'];
@@ -684,7 +712,14 @@ server.on('upgrade', (req, socket) => {
 
 load();
 server.listen(PORT, () => {
-  console.log(`[chess-ws] listening on :${PORT}`);
+  console.log(`[chess-ws] listening on :${PORT} (${TLS_ON ? 'wss:// — TLS enabled' : 'ws:// — plain'})`);
   console.log(`[chess-ws] mode: ${DEV_MODE ? 'DEV (trust client identity — set TG_BOT_TOKEN for prod)' : 'PROD (initData HMAC validation)'}`);
   console.log(`[chess-ws] ADMIN_ID: ${ADMIN_ID || '(not set)'}`);
+  if (DEV_MODE) {
+    console.warn('[chess-ws] ⚠️  DEV MODE: anyone can claim any Telegram ID (including ADMIN_ID).');
+    console.warn('[chess-ws] ⚠️  Put your @BotFather token in server/.env as TG_BOT_TOKEN=... before going live.');
+  }
+  if (!TLS_ON) {
+    console.warn('[chess-ws] ⚠️  No TLS: serve behind an HTTPS/WSS reverse proxy, or set SSL_CERT + SSL_KEY.');
+  }
 });
