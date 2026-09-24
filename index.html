@@ -217,8 +217,9 @@
       <label class="field"><span>Название</span>
         <input id="adm-name" maxlength="60" placeholder="Кубок выходного дня" />
       </label>
-      <label class="field"><span>Мест</span>
+      <label class="field"><span>Количество мест</span>
         <div class="level-picker" id="adm-seats">
+          <button data-seats="3">3</button>
           <button data-seats="4" class="active">4</button>
           <button data-seats="8">8</button>
           <button data-seats="16">16</button>
@@ -228,6 +229,7 @@
       <label class="field"><span>Призовой фонд (в рублях)</span>
         <input id="adm-prize" type="number" min="0" step="100" placeholder="5000" />
       </label>
+      <p class="hint" style="margin:2px 0 0">Призовых мест всегда три: 1-е — 50%, 2-е — 30%, 3-е — 20% фонда.</p>
       <button class="start-btn" id="adm-create" style="margin:6px 0 0">Создать турнир</button>
     </div>
 
