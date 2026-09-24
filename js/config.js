@@ -13,4 +13,9 @@ export const CONFIG = {
   botAppLink:
     localStorage.getItem('uca-bot-link') ||
     'https://t.me/UltimateChessBot/app',
+
+  // Owner's Telegram user id. This is only a UI hint — the *server* is the
+  // authority and re-checks it against the signed Telegram initData. Set the
+  // same value in server/index.js (ADMIN_ID_CONST) or via the ADMIN_ID env var.
+  adminId: Number(localStorage.getItem('uca-admin-id') || 0),
 };

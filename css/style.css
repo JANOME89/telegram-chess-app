@@ -280,3 +280,114 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 }
 .promo-choice:active { border-color: var(--acc-2); }
 .promo-choice svg { width: 46px; height: 46px; }
+
+/* ============ tournaments ============ */
+.tour-btn {
+  width: 100%; padding: 16px; border-radius: var(--radius); margin-bottom: 12px;
+  background: linear-gradient(135deg, #f59e0b, var(--acc-1));
+  color: #fff; font-size: 16px; font-weight: 700;
+  box-shadow: 0 8px 26px rgba(245, 158, 11, 0.32);
+  transition: transform 0.12s;
+}
+.tour-btn:active { transform: scale(0.98); }
+
+.tour-list { display: flex; flex-direction: column; gap: 12px; }
+.tour-card {
+  padding: 14px 16px; display: flex; align-items: center; gap: 12px;
+  transition: transform 0.12s, border-color 0.12s;
+}
+.tour-card:active { transform: scale(0.99); }
+.tour-card-main { flex: 1; min-width: 0; }
+.tour-card-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.tour-card-meta { font-size: 12px; color: var(--tg-hint); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.prize-plaque {
+  display: inline-block; padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: 700;
+  background: linear-gradient(135deg, rgba(245,158,11,0.22), rgba(124,58,237,0.22));
+  border: 1px solid rgba(245,158,11,0.4); color: #ffd27a;
+}
+:root[data-scheme="light"] .prize-plaque { color: #a15c00; }
+.badge {
+  display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
+  background: var(--tg-secondary-bg); border: 1px solid var(--glass-brd); color: var(--tg-hint);
+}
+.badge.reg { color: #6ee7b7; border-color: rgba(110,231,183,0.4); }
+.badge.active { color: #7dd3fc; border-color: rgba(125,211,252,0.4); }
+.badge.finished { color: #fca5a5; border-color: rgba(252,165,165,0.4); }
+.mini-btn {
+  padding: 9px 14px; border-radius: 12px; font-size: 13px; font-weight: 700; white-space: nowrap;
+  background: var(--grad); color: #fff;
+}
+.mini-btn.ghost { background: var(--glass); color: var(--tg-text); border: 1px solid var(--glass-brd); }
+.mini-btn:disabled { opacity: 0.5; }
+
+.tour-hero { padding: 16px; margin-bottom: 8px; }
+.tour-hero-meta { display: flex; gap: 10px; align-items: center; margin-top: 12px; font-size: 13px; color: var(--tg-hint); }
+.section-title { font-size: 14px; font-weight: 700; margin: 18px 2px 10px; color: var(--tg-hint); text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* bracket */
+.bracket { display: flex; gap: 14px; overflow-x: auto; padding: 4px 2px 12px; }
+.bracket-round { display: flex; flex-direction: column; gap: 12px; justify-content: space-around; min-width: 150px; }
+.bracket-round-title { font-size: 11px; color: var(--tg-hint); text-align: center; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.bracket-match { background: var(--glass); border: 1px solid var(--glass-brd); border-radius: 10px; overflow: hidden; }
+.bracket-slot {
+  display: flex; align-items: center; gap: 6px; padding: 7px 9px; font-size: 12px;
+  border-bottom: 1px solid var(--glass-brd); color: var(--tg-hint);
+}
+.bracket-slot:last-child { border-bottom: none; }
+.bracket-slot .seed { width: 14px; opacity: 0.5; font-size: 10px; }
+.bracket-slot .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bracket-slot.win { color: var(--tg-text); font-weight: 700; background: rgba(6,182,212,0.14); }
+.bracket-slot.bye { opacity: 0.5; font-style: italic; }
+
+/* ============ admin ============ */
+.admin-card { padding: 16px; margin-bottom: 14px; }
+.field { display: block; margin-bottom: 12px; }
+.field > span { display: block; font-size: 12px; color: var(--tg-hint); margin-bottom: 6px; font-weight: 600; }
+.field input {
+  width: 100%; padding: 11px 13px; border-radius: 12px; font-size: 15px;
+  background: var(--tg-secondary-bg); color: var(--tg-text); border: 1px solid var(--glass-brd);
+}
+.adm-open-list { display: flex; flex-direction: column; gap: 8px; }
+.adm-open-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--tg-secondary-bg); border-radius: 12px; }
+.adm-open-row .t { flex: 1; min-width: 0; font-size: 13px; }
+.adm-open-row .t small { display: block; color: var(--tg-hint); font-size: 11px; }
+
+.payouts { display: flex; flex-direction: column; gap: 8px; }
+.payout-row { padding: 11px 13px; background: var(--tg-secondary-bg); border-radius: 12px; font-size: 13px; }
+.payout-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.payout-place { font-weight: 800; width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: var(--grad); color: #fff; font-size: 13px; }
+.payout-tour { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.payout-amt { color: #ffd27a; font-weight: 700; }
+.payout-user { color: var(--tg-link); font-size: 12px; margin-bottom: 4px; }
+.payout-req { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--tg-text); background: rgba(0,0,0,0.18); padding: 6px 9px; border-radius: 8px; word-break: break-all; margin-bottom: 8px; }
+.payout-awaiting { color: var(--tg-hint); font-size: 12px; font-style: italic; }
+
+/* ============ claim modal ============ */
+.claim-box { width: min(92vw, 380px); padding: 26px 22px; }
+.claim-trophy { font-size: 52px; line-height: 1; margin-bottom: 8px; filter: drop-shadow(0 4px 14px rgba(245,158,11,0.5)); }
+.claim-box h3 { font-size: 20px; margin-bottom: 4px; }
+.claim-sub { color: var(--tg-hint); font-size: 14px; }
+.claim-amount {
+  font-size: 30px; font-weight: 800; margin: 12px 0 6px;
+  background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.claim-hint { color: var(--tg-hint); font-size: 13px; margin: 10px 0 12px; }
+.claim-methods { justify-content: center; margin-bottom: 12px; }
+.claim-input {
+  width: 100%; padding: 12px 14px; border-radius: 12px; font-size: 15px;
+  background: var(--tg-secondary-bg); color: var(--tg-text); border: 1px solid var(--glass-brd);
+}
+.claim-sent-badge {
+  width: 60px; height: 60px; margin: 6px auto 12px; border-radius: 50%;
+  background: var(--grad); color: #fff; font-size: 34px; display: flex; align-items: center; justify-content: center;
+}
+
+/* ============ toast ============ */
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px);
+  z-index: 90; max-width: 86vw; padding: 11px 18px; border-radius: 14px;
+  background: rgba(20, 22, 34, 0.92); color: #fff; font-size: 13px; font-weight: 600;
+  border: 1px solid var(--glass-brd); box-shadow: 0 8px 26px rgba(0,0,0,0.4);
+  opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; text-align: center;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
