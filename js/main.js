@@ -14,6 +14,8 @@ import {
 const PIECE_VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const $ = (id) => document.getElementById(id);
 
+const ADMIN_ID = 498258870;
+
 const state = {
   game: new Chess(),
   mode: 'bot',
@@ -110,6 +112,29 @@ function fillProfile() {
       fb.textContent = (user.first_name || '?')[0].toUpperCase();
     }
   }
+}
+
+// ================= owner (secret admin panel) =================
+// In Telegram the id comes from the signed initData; in a plain browser (dev)
+// it comes from the server-authenticated session. Every admin *operation* is
+// re-checked server-side against the same ADMIN_ID.
+function isOwner() {
+  return tg?.initDataUnsafe?.user?.id === ADMIN_ID || state.me?.id === ADMIN_ID;
+}
+
+// The entry button exists in the DOM only for the owner — for everyone else it
+// is never created (and removed if the session turns out not to be the owner).
+function renderOwnerEntry() {
+  const existing = $('btn-menu-admin');
+  if (!isOwner()) { existing?.remove(); return; }
+  if (existing) return;
+  const btn = document.createElement('button');
+  btn.id = 'btn-menu-admin';
+  btn.className = 'admin-entry glass';
+  btn.type = 'button';
+  btn.innerHTML = '<span class="gear">🛡️</span> Панель организатора';
+  btn.addEventListener('click', () => { haptic('light'); openAdmin(); });
+  $('btn-open-settings').before(btn);
 }
 
 // ================= game lifecycle =================
@@ -458,7 +483,8 @@ function setupNet(net) {
 
   net.on('auth-ok', ({ user, admin }) => {
     state.me = user; state.isAdmin = !!admin;
-    $('btn-admin').classList.toggle('hidden', !admin);
+    renderOwnerEntry();
+    $('btn-admin').classList.toggle('hidden', !isOwner());
     if (authResolve) { const r = authResolve; authResolve = null; r(net); }
     // re-subscribe if the user is looking at tournaments
     if (!$('screen-tournaments').classList.contains('hidden') ||
@@ -618,7 +644,7 @@ function toast(text) {
 
 async function openTournaments() {
   showScreen('tournaments');
-  $('btn-admin').classList.toggle('hidden', !state.isAdmin);
+  $('btn-admin').classList.toggle('hidden', !isOwner());
   renderTourList();
   const net = await netAuthed();
   if (!net) { toast('Нет соединения с сервером'); return; }
@@ -742,7 +768,7 @@ function slotNode(s, winnerId) {
 
 // ================= admin panel =================
 async function openAdmin() {
-  if (!state.isAdmin) return;
+  if (!isOwner()) return;
   showScreen('admin');
   const net = await netAuthed();
   if (!net) { toast('Нет соединения'); return; }
@@ -947,6 +973,7 @@ injectSprite();
 initTelegram();
 loadSettings();
 fillProfile();
+renderOwnerEntry();
 
 // deep-link join: Telegram start_param (?startapp=ROOM) or ?room=ROOM for browser tests
 const startParam = tg?.initDataUnsafe?.start_param || new URLSearchParams(location.search).get('room');

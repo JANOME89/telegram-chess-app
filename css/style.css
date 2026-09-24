@@ -141,6 +141,14 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .gear { font-size: 18px; }
 .hint { text-align: center; color: var(--tg-hint); font-size: 12px; margin-top: 16px; }
 
+/* owner-only entry (created in DOM only for ADMIN_ID) */
+.admin-entry {
+  width: 100%; padding: 12px; margin-bottom: 10px; display: flex; align-items: center;
+  justify-content: center; gap: 8px; font-size: 13px; font-weight: 600;
+  color: var(--tg-hint); opacity: 0.75;
+}
+.admin-entry:active { opacity: 1; color: var(--tg-text); }
+
 /* ============ settings ============ */
 .settings-list { padding: 6px 16px; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 0; border-bottom: 1px solid var(--glass-brd); }

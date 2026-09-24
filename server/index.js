@@ -21,9 +21,10 @@ const PORT = process.env.PORT || 8787;
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const BOT_TOKEN = process.env.TG_BOT_TOKEN || '';
 const DEV_MODE = !BOT_TOKEN;
-// ⬇️ OWNER: put your Telegram user id here (find it via @userinfobot). Server-enforced.
-// The ADMIN_ID env var overrides this constant if present.
-const ADMIN_ID_CONST = 0; // e.g. 123456789
+// ⬇️ OWNER: your Telegram user id. Server-enforced — every admin operation is
+// rejected unless the signed initData carries exactly this id. The ADMIN_ID env
+// var overrides this constant if present. Must match ADMIN_ID in js/main.js.
+const ADMIN_ID_CONST = 498258870;
 const ADMIN_ID = Number(process.env.ADMIN_ID || ADMIN_ID_CONST || 0);
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'tournaments.json');
 const AUTH_MAX_AGE = 24 * 3600; // seconds
