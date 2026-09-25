@@ -1,0 +1,27 @@
+# Render Blueprint: New → Blueprint → выберите репозиторий с этим файлом.
+# TG_BOT_TOKEN задаётся в панели Render (sync: false) — в репозиторий он не попадает.
+#
+# ВАЖНО: инстанс должен быть ровно один. Комнаты партий и сокеты живут в памяти
+# процесса, поэтому за scaling > 1 игроки перестанут попадать друг к другу.
+services:
+  - type: web
+    name: ultimate-chess-ws
+    runtime: node
+    plan: free
+    region: frankfurt
+    rootDir: server
+    buildCommand: npm install --omit=dev
+    startCommand: node index.js
+    healthCheckPath: /
+    envVars:
+      - key: TG_BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        value: "498258870"
+      # Без подключённого диска файлы живут только до следующего деплоя.
+      # Чтобы турниры и заявки не терялись: добавьте Disk с mountPath /var/data
+      # и поменяйте значение ниже на /var/data/tournaments.json.
+      - key: DATA_FILE
+        value: /opt/render/project/src/tournaments.json
+      - key: NODE_VERSION
+        value: "22"

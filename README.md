@@ -9,7 +9,9 @@ MainButton / BackButton, вибро-отклик, звуки, Stockfish (1–5) 
 ultimate-chess/
 ├── index.html          # SDK Telegram + экраны (меню / настройки / игра / турниры / админ)
 ├── css/style.css       # темы Telegram (CSS-переменные) + web3 glassmorphism
+├── render.yaml         # Blueprint для Render (WS-сервер как веб-сервис)
 ├── server/index.js     # WebSocket-сервер: комнаты, авторизация initData, турниры, выплаты
+├── server/Dockerfile   # образ для Fly.io / Railway / VPS (volume /data под хранилище)
 ├── server/.env.example # шаблон секретов (TG_BOT_TOKEN, ADMIN_ID, SSL_CERT/SSL_KEY) — скопируйте в .env
 ├── server/tournaments.json  # JSON-хранилище турниров и заявок (создаётся автоматически)
 └── js/
@@ -182,7 +184,84 @@ TG_BOT_TOKEN=123456:ABC... ADMIN_ID=ваш_telegram_id node index.js
   платёжного агента/юрлицо, согласие на обработку ПДн и не храните полные номера карт.
 - Призовой фонд и выплаты организует владелец; приложение лишь собирает и передаёт заявки.
 
-## Деплой и тест в Telegram
+## Деплой сервера (wss://) — чтобы работало с телефона
+
+Без этого шага на телефоне турниров не будет: `ws://localhost:8787` — это сам телефон,
+а Telegram внутри https-страницы блокирует незащищённый `ws://`. Нужен публичный адрес
+**`wss://`**.
+
+Два правила, которые нельзя нарушать:
+
+- **Инстанс ровно один.** Комнаты партий и сокеты живут в памяти процесса: при scaling > 1
+  игроки попадают на разные копии и не видят друг друга.
+- **Токен — только в переменные окружения хостинга.** Файл `server/.env` в репозиторий
+  и в Docker-образ не попадает (`.gitignore`, `.dockerignore`).
+
+### Вариант A — Render (проще всего)
+
+1. Запушьте папку `ultimate-chess/` в репозиторий GitHub (без `server/.env`).
+2. Render → **New → Blueprint** → выберите репозиторий: settings подхватятся из
+   `render.yaml` (корень сервиса — `server`, start — `node index.js`, health check — `GET /`).
+3. В панели сервиса впишите `TG_BOT_TOKEN` (переменная объявлена с `sync: false`, поэтому
+   Render спросит значение сам). `ADMIN_ID=498258870` уже прописан.
+4. Дождитесь деплоя и проверьте лог: должно быть
+   `mode: PROD (initData HMAC validation)` и `ADMIN_ID: 498258870`.
+   Адрес вида `https://ultimate-chess-ws.onrender.com` → в клиенте это
+   `wss://ultimate-chess-ws.onrender.com`.
+5. **Хранилище.** На бесплатном плане файловая система очищается при каждом деплое —
+   турниры и заявки на выплаты пропадут. Чтобы этого не случилось, добавьте
+   *Disk* с `mountPath: /var/data` и поменяйте `DATA_FILE` на `/var/data/tournaments.json`.
+6. Бесплатный план засыпает без трафика: первый игрок будит сервис ~30–60 с, а назначенные
+   на это время старты турниров сработают с задержкой (свитчер догонит их сразу после пробуждения).
+
+### Вариант B — Fly.io / Railway / любой Docker-хостинг
+
+Готовый `server/Dockerfile` (Node 22 Alpine, без root, healthcheck, volume `/data`):
+
+```bash
+cd server
+docker build -t ultimate-chess-ws .
+docker run --rm -p 8787:8787 \
+  -e TG_BOT_TOKEN='123456:ABC...' -e ADMIN_ID=498258870 \
+  -v ultimate-chess-data:/data \
+  ultimate-chess-ws
+```
+
+На Fly.io дополнительно примонтируйте том в `/data` (`flyctl volumes create chess_data`),
+на Railway — включите Volume и укажите `DATA_FILE=/data/tournaments.json`.
+Порт хостинг задаст сам через `PORT` — сервер его уважает.
+
+### Вариант C — свой VPS + обратный прокси
+
+```bash
+# на сервере
+git clone <repo> && cd <repo>/ultimate-chess/server
+TG_BOT_TOKEN='123456:ABC...' ADMIN_ID=498258870 DATA_FILE=/var/lib/ultimate-chess/tournaments.json \
+  node index.js        # удобнее — через systemd или pm2
+```
+
+TLS терминирует прокси, сам сервер остаётся на `ws://`. Пример Caddy (дважды короче nginx):
+
+```
+ws.example.com {
+    reverse_proxy 127.0.0.1:8787
+}
+```
+
+nginx: `proxy_pass http://127.0.0.1:8787;` плюс обязательные
+`proxy_http_version 1.1;`, `proxy_set_header Upgrade $http_upgrade;`,
+`proxy_set_header Connection "upgrade";` и большой `proxy_read_timeout`
+(соединения живут долго; сервер шлёт ping каждые 25 с).
+Либо задайте `SSL_CERT`/`SSL_KEY` в `server/.env` — тогда Node сам раздаёт `wss://` без прокси.
+
+### Последний шаг — прописать адрес в клиенте
+
+В `js/config.js` замените `'ws://localhost:8787'` на ваш адрес, например
+`'wss://ultimate-chess-ws.onrender.com'`. Без пересборки адрес можно переопределить
+через `?ws=wss://…` в ссылке Mini App или `localStorage['uca-ws']`.
+Проверка: экран «Турниры» должен показать список, а не панель «⚠️ Нет связи с сервером».
+
+## Деплой фронтенда и тест в Telegram
 
 1. **Хостинг с HTTPS** (обязательно): GitHub Pages, Netlify, Vercel или Cloudflare Pages.
    Загрузите в корень сайта **только фронтенд**: `index.html`, `css/`, `js/`.

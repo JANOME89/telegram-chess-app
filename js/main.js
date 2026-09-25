@@ -31,6 +31,7 @@ const state = {
   net: null,
   room: null,
   myColor: 'w',
+  syncCount: 0,      // how many moves of the server-side log this board has applied
   // identity / tournaments
   me: null,
   isAdmin: false,
@@ -221,7 +222,8 @@ function doMove(obj, origin = 'local') {
   catch (_) { clearSelection(); return null; }
   board.applyMove(m);
   if (state.mode === 'online' && origin === 'local') {
-    state.net?.send({ t: 'move', move: { from: m.from, to: m.to, promotion: m.promotion } });
+    state.net?.send({ t: 'move', room: state.room, move: { from: m.from, to: m.to, promotion: m.promotion } });
+    state.syncCount++;
   }
   if (m.captured) { sound.play('capture'); haptic('medium'); }
   else if (m.flags.includes('k') || m.flags.includes('q')) { sound.play('castle'); haptic('light'); }
@@ -294,7 +296,7 @@ function endGame() {
 function resign() {
   if (state.game.isGameOver() || state.busy) return;
   if (state.mode === 'online') {
-    state.net?.send({ t: 'resign' });
+    state.net?.send({ t: 'resign', room: state.room });
     $('overlay-title').textContent = 'Поражение!';
     $('overlay-sub').textContent = 'Вы сдались';
     $('overlay').classList.remove('hidden');
@@ -461,7 +463,7 @@ let reconnectTimer = null;
 
 function ensureNet() {
   if (state.net) return state.net;
-  const net = new Net(CONFIG.wsUrl);
+  const net = new Net(CONFIG);
   state.net = net;
   setupNet(net);
   return net;
@@ -506,7 +508,18 @@ function setupNet(net) {
   net.on('queued', () => setOnlineStatus('Поиск соперника…', 'Подбираем равного по силе игрока', true));
 
   // ---- shared game relay ----
-  net.on('move', ({ move }) => { if (state.mode === 'online') doMove(move, 'remote'); });
+  net.on('move', ({ move }) => {
+    if (state.mode !== 'online') return;
+    if (doMove(move, 'remote')) state.syncCount++;
+  });
+  // Authoritative move log: heals a board that missed, duplicated or never
+  // received a relayed move (flaky mobile network, forged realtime hint).
+  net.on('room-state', ({ room, moves }) => resyncRoom(room, moves));
+  net.on('room-gone', ({ room }) => {
+    if (state.mode !== 'online' || state.room !== room || state.game.isGameOver()) return;
+    showWinOverlay('Партия завершена', 'Комната закрыта', true);
+    leaveOnline();
+  });
   net.on('resign', () => {
     if (state.mode !== 'online' || state.game.isGameOver()) return;
     showWinOverlay('Победа!', 'Соперник сдался', true);
@@ -537,6 +550,11 @@ function setupNet(net) {
   net.on('claim-ok', () => { state.activeClaim && (state.activeClaim.status = 'submitted'); showClaimSent(); });
   net.on('claim-paid', () => toast('Выплата получена! 🎉'));
   net.on('payouts-list', ({ claims }) => renderPayouts(claims));
+  // Requisites are never broadcast; the owner is only nudged to re-fetch them.
+  net.on('payouts-dirty', () => {
+    if (!isOwner() || $('screen-admin').classList.contains('hidden')) return;
+    state.net?.send({ t: 'payouts-list' });
+  });
 
   net.on('error', ({ msg }) => {
     if (!msg) return;
@@ -602,9 +620,11 @@ function beginOnline(room, color, tourInfo) {
   state.myColor = color;
   state.tourMatch = tourInfo || null;
   state.game = new Chess();
+  state.syncCount = 0;
   state.selected = null;
   state.legalTargets = [];
   state.busy = false;
+  state.net?.setRoom(room);
   board.setOrientation(color);
   board.fullRender(state.game.board());
   board.clearHighlights();
@@ -623,8 +643,30 @@ function beginOnline(room, color, tourInfo) {
   if (tourInfo) toast('🔔 Ваш тур начался!');
 }
 
-function enterTournamentMatch(p) {
-  onlineModal(false);
+// Rebuild the position from the server's move log when the two disagree.
+// Cheap (runs every few seconds in a live game) and it makes a lost or forged
+// realtime message self-healing instead of permanently desyncing the boards.
+function resyncRoom(room, moves) {
+  if (state.mode !== 'online' || state.room !== room || !Array.isArray(moves)) return;
+  if (moves.length === state.syncCount) return;
+  const g = new Chess();
+  for (const mv of moves) {
+    try { g.move(mv); } catch (_) { return; } // log we cannot replay: keep ours
+  }
+  state.syncCount = moves.length;
+  if (g.fen() === state.game.fen()) return;
+  state.game = g;
+  state.selected = null;
+  state.legalTargets = [];
+  board.setOrientation(state.myColor);
+  board.fullRender(g.board());
+  board.clearHighlights();
+  renderStrips();
+  renderStatus();
+  if (g.isGameOver()) endGame();
+}
+
+function enterTournamentMatch(p) {  onlineModal(false);
   // After a reconnect the server re-delivers the match we are already playing:
   // keep the position on the board instead of resetting it.
   if (state.mode === 'online' && state.room === p.room && state.tourMatch?.matchId === p.matchId) {
@@ -638,7 +680,11 @@ function enterTournamentMatch(p) {
 }
 
 function leaveOnline() {
-  if (state.mode === 'online') { state.room = null; state.tourMatch = null; }
+  if (state.mode === 'online') {
+    state.net?.setRoom(null);
+    state.room = null;
+    state.tourMatch = null;
+  }
 }
 
 // ================= tournaments UI =================
@@ -694,7 +740,7 @@ async function openTournaments() {
   net.send({ t: 'tours' });
 }
 
-// A dead socket used to look exactly like "no tournaments". Say what is wrong instead.
+// An unreachable backend used to look exactly like "no tournaments". Say what is wrong instead.
 function setNetBanner(kind) {
   const el = $('tour-net');
   if (!el) return;
@@ -704,12 +750,12 @@ function setNetBanner(kind) {
     ? '<strong>⏳ Подключение…</strong>Загружаем список турниров.'
     : `<strong>⚠️ Нет связи с сервером</strong>
        Список турниров пуст не потому, что их нет, а потому что приложение не может
-       подключиться к игровому серверу.
-       <code>${escapeHtml(CONFIG.wsUrl)}</code>
+       достучаться до облачного бэкенда.
+       <code>${escapeHtml(CONFIG.apiUrl)}</code>
        <ul>
-         <li>На телефоне <b>localhost</b> — это сам телефон, сервер там не запущен.</li>
-         <li>Telegram открывает Mini App по <b>https</b> и блокирует незащищённый <b>ws://</b>.</li>
-         <li>Нужен публичный адрес <b>wss://</b>: добавьте его в ссылку как <b>?ws=wss://ваш-домен</b>.</li>
+         <li>Локальный сервер не нужен: турниры живут в облаке, проверьте интернет.</li>
+         <li>Откройте адрес выше в браузере — должен прийти JSON c <b>"ok":true</b>.</li>
+         <li>Другой бэкенд: добавьте к ссылке <b>?api=https://ваш-проект/api/rpc</b>.</li>
        </ul>`;
   const empty = $('tour-empty');
   if (empty) empty.classList.toggle('hidden', kind !== 'online');
