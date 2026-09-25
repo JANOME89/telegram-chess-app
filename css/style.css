@@ -399,3 +399,67 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; text-align: center;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ============ scheduled start ============ */
+.tour-time {
+  margin-top: 12px; font-size: 13px; font-weight: 700; color: #ffd27a;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.tour-time.missed { color: #fca5a5; }
+.tour-time small { font-weight: 600; color: var(--tg-hint); }
+.tour-card-meta .tour-time { margin-top: 0; font-size: 12px; }
+
+.time-presets { display: flex; gap: 8px; flex-wrap: wrap; margin: -4px 0 12px; }
+.time-presets button {
+  padding: 7px 12px; border-radius: 11px; font-size: 12px; font-weight: 700;
+  background: var(--tg-secondary-bg); color: var(--tg-hint);
+  border: 1px solid var(--glass-brd);
+}
+.time-presets button:active { color: var(--tg-text); border-color: var(--acc-2); }
+.field input[type="datetime-local"] { color-scheme: dark; }
+:root[data-scheme="light"] .field input[type="datetime-local"] { color-scheme: light; }
+
+/* ============ connection banner ============ */
+.net-banner {
+  padding: 14px 16px; margin-bottom: 14px; font-size: 13px; line-height: 1.45;
+  border-color: rgba(252, 165, 165, 0.45);
+}
+.net-banner strong { display: block; margin-bottom: 6px; font-size: 14px; color: #fca5a5; }
+.net-banner code {
+  display: block; margin: 8px 0 0; padding: 8px 10px; border-radius: 9px;
+  background: rgba(0, 0, 0, 0.25); font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px; word-break: break-all; color: var(--tg-link);
+}
+.net-banner ul { margin: 8px 0 0 18px; color: var(--tg-hint); }
+.net-banner li { margin-bottom: 3px; }
+
+/* ============ mobile ============ */
+@media (max-width: 380px) {
+  .screen { padding: 12px 12px 32px; }
+  .tour-card { padding: 12px 13px; }
+  .tour-card-title { font-size: 15px; }
+  .tour-card-meta { font-size: 11px; gap: 6px; }
+  .prize-plaque { padding: 4px 10px; font-size: 12px; }
+  .bracket-round { min-width: 132px; }
+}
+
+/* Short phones inside Telegram: the menu must fit without scrolling away the tournaments button. */
+@media (max-height: 720px) {
+  .app-header { padding-bottom: 10px; }
+  .profile-card { padding: 10px 12px; }
+  .avatar, .avatar-fallback { width: 40px; height: 40px; font-size: 17px; }
+  .mode-select { gap: 8px; }
+  .mode-card { padding: 10px 12px; }
+  .mode-icon { font-size: 22px; }
+  .online-btn, .tour-btn, .start-btn { padding: 12px; margin-bottom: 8px; font-size: 15px; }
+  .settings-link { padding: 10px 12px; }
+  #screen-menu > .hint:last-child { display: none; }
+}
+
+@media (max-height: 600px) {
+  .profile-card { margin-bottom: 8px; }
+  .profile-name { font-size: 15px; }
+  .mode-sub { display: none; }
+  .mode-card { flex-direction: row; align-items: center; gap: 10px; text-align: left; }
+  .online-btn, .tour-btn, .start-btn { padding: 10px; margin-bottom: 6px; }
+}

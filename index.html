@@ -179,6 +179,7 @@
       <button class="icon-btn hidden" id="btn-admin" title="Админ-панель">🛡️</button>
     </header>
 
+    <div id="tour-net" class="net-banner glass hidden"></div>
     <div id="tour-list" class="tour-list"></div>
     <p class="hint" id="tour-empty">Пока нет активных турниров. Загляните позже.</p>
   </section>
@@ -196,6 +197,7 @@
         <span id="detail-seats">Мест: 0/4</span>
         <span class="badge" id="detail-status">Регистрация</span>
       </div>
+      <div class="tour-time hidden" id="detail-start"></div>
       <button class="start-btn" id="detail-join" style="margin:14px 0 0">Участвовать</button>
     </div>
 
@@ -229,7 +231,17 @@
       <label class="field"><span>Призовой фонд (в рублях)</span>
         <input id="adm-prize" type="number" min="0" step="100" placeholder="5000" />
       </label>
+      <label class="field"><span>Время начала (необязательно)</span>
+        <input id="adm-time" type="datetime-local" />
+      </label>
+      <div class="time-presets" id="adm-time-presets">
+        <button type="button" data-min="10">через 10 мин</button>
+        <button type="button" data-min="60">через час</button>
+        <button type="button" data-min="1440">завтра</button>
+        <button type="button" data-clear="1">без расписания</button>
+      </div>
       <p class="hint" style="margin:2px 0 0">Призовых мест всегда три: 1-е — 50%, 2-е — 30%, 3-е — 20% фонда.</p>
+      <p class="hint" style="margin:2px 0 0">С расписанием сетка генерируется автоматически в указанное время (нужно ≥ 2 игроков). Без него — кнопкой «Начать».</p>
       <button class="start-btn" id="adm-create" style="margin:6px 0 0">Создать турнир</button>
     </div>
 

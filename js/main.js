@@ -488,7 +488,10 @@ function setupNet(net) {
     if (authResolve) { const r = authResolve; authResolve = null; r(net); }
     // re-subscribe if the user is looking at tournaments
     if (!$('screen-tournaments').classList.contains('hidden') ||
-        !$('screen-tour-detail').classList.contains('hidden')) net.send({ t: 'tours' });
+        !$('screen-tour-detail').classList.contains('hidden')) {
+      setNetBanner('online');
+      net.send({ t: 'tours' });
+    }
   });
 
   // ---- casual online ----
@@ -520,6 +523,14 @@ function setupNet(net) {
   net.on('tour-detail', ({ tour, myClaim }) => { state.currentTour = tour; state.myClaim = myClaim; renderTourDetail(); });
   net.on('tour-joined', ({ tourId }) => { if (state.currentTour?.id === tourId) state.net?.send({ t: 'tour-detail', tourId }); haptic('success'); });
   net.on('tour-created', ({ tour }) => { haptic('success'); toast(`Турнир «${tour.name}» создан`); state.net?.send({ t: 'tours' }); });
+  net.on('tour-time-set', ({ startsAt }) => {
+    haptic('success');
+    toast(startsAt ? `Старт назначен на ${fmtStartsAt(startsAt)}` : 'Расписание снято, старт вручную');
+    if (state.currentTour) state.net?.send({ t: 'tour-detail', tourId: state.currentTour.id });
+  });
+  net.on('schedule-missed', ({ name, count }) => {
+    toast(`«${name}»: время вышло, но игроков всего ${count} — старт отложен`);
+  });
   net.on('tour-started', ({ tourId }) => { toast('Сетка сгенерирована, турнир начался'); state.net?.send({ t: 'tours' }); if (state.currentTour?.id === tourId) state.net?.send({ t: 'tour-detail', tourId }); });
   net.on('match-start', (p) => enterTournamentMatch(p));
   net.on('prize-claim', (p) => openClaimModal(p));
@@ -534,6 +545,7 @@ function setupNet(net) {
   });
   net.on('close', () => {
     state.me = null;
+    if (!$('screen-tournaments').classList.contains('hidden')) { setNetBanner('offline'); renderTourList(); }
     if (state.mode === 'online' && !state.game.isGameOver()) {
       $('overlay-title').textContent = 'Связь потеряна';
       $('overlay-sub').textContent = 'Переподключение…';
@@ -613,6 +625,12 @@ function beginOnline(room, color, tourInfo) {
 
 function enterTournamentMatch(p) {
   onlineModal(false);
+  // After a reconnect the server re-delivers the match we are already playing:
+  // keep the position on the board instead of resetting it.
+  if (state.mode === 'online' && state.room === p.room && state.tourMatch?.matchId === p.matchId) {
+    showScreen('game');
+    return;
+  }
   beginOnline(p.room, p.color, {
     tourId: p.tourId, matchId: p.matchId,
     oppId: p.opponent.id, oppName: p.opponent.first_name || p.opponent.username || 'Соперник',
@@ -625,8 +643,31 @@ function leaveOnline() {
 
 // ================= tournaments UI =================
 const STATUS_LABEL = { registration: 'Регистрация', active: 'Идёт', finished: 'Завершён' };
+const BADGE_CLASS = { registration: 'reg', active: 'active', finished: 'finished' };
 const money = (n) => `${Math.round(n || 0).toLocaleString('ru-RU')} ₽`;
 function displayName(p) { return p?.first_name || p?.username || ('Игрок ' + (p?.id || '')); }
+
+const DT = new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+function fmtStartsAt(ms) { return DT.format(new Date(ms)); }
+function fmtCountdown(ms) {
+  const s = Math.max(0, Math.round((ms - Date.now()) / 1000));
+  if (s < 60) return `через ${s} сек`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `через ${m} мин`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `через ${h} ч ${m % 60} мин`;
+  return `через ${Math.floor(h / 24)} дн`;
+}
+// One line that works for a future start, a start in progress and a missed start.
+function startsAtLine(t, html = true) {
+  if (!t.startsAt) return '';
+  if (t.startsAt > Date.now()) {
+    const cd = fmtCountdown(t.startsAt);
+    return `⏰ ${fmtStartsAt(t.startsAt)}` + (html ? ` · <small>${cd}</small>` : ` · ${cd}`);
+  }
+  if (t.startMissed) return '⏰ Время прошло, ждём ещё игроков';
+  return `⏰ ${fmtStartsAt(t.startsAt)} · старт`;
+}
 
 let toastTimer = null;
 function toast(text) {
@@ -646,25 +687,52 @@ async function openTournaments() {
   showScreen('tournaments');
   $('btn-admin').classList.toggle('hidden', !isOwner());
   renderTourList();
+  setNetBanner('connecting');
   const net = await netAuthed();
-  if (!net) { toast('Нет соединения с сервером'); return; }
+  if (!net) { setNetBanner('offline'); renderTourList(); return; }
+  setNetBanner('online');
   net.send({ t: 'tours' });
+}
+
+// A dead socket used to look exactly like "no tournaments". Say what is wrong instead.
+function setNetBanner(kind) {
+  const el = $('tour-net');
+  if (!el) return;
+  if (kind === 'online') { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  el.innerHTML = kind === 'connecting'
+    ? '<strong>⏳ Подключение…</strong>Загружаем список турниров.'
+    : `<strong>⚠️ Нет связи с сервером</strong>
+       Список турниров пуст не потому, что их нет, а потому что приложение не может
+       подключиться к игровому серверу.
+       <code>${escapeHtml(CONFIG.wsUrl)}</code>
+       <ul>
+         <li>На телефоне <b>localhost</b> — это сам телефон, сервер там не запущен.</li>
+         <li>Telegram открывает Mini App по <b>https</b> и блокирует незащищённый <b>ws://</b>.</li>
+         <li>Нужен публичный адрес <b>wss://</b>: добавьте его в ссылку как <b>?ws=wss://ваш-домен</b>.</li>
+       </ul>`;
+  const empty = $('tour-empty');
+  if (empty) empty.classList.toggle('hidden', kind !== 'online');
 }
 
 function renderTourList() {
   const list = $('tour-list');
   list.innerHTML = '';
-  $('tour-empty').classList.toggle('hidden', state.tours.length > 0);
+  const offline = !$('tour-net').classList.contains('hidden');
+  $('tour-empty').classList.toggle('hidden', state.tours.length > 0 || offline);
   for (const t of state.tours) {
     const card = document.createElement('div');
     card.className = 'tour-card glass';
+    const when = t.status === 'registration' && t.startsAt
+      ? `<span class="tour-time${t.startMissed ? ' missed' : ''}">${startsAtLine(t)}</span>` : '';
     card.innerHTML =
       `<div class="tour-card-main">
          <div class="tour-card-title">${escapeHtml(t.name)}</div>
          <div class="tour-card-meta">
            <span class="prize-plaque">💰 Приз: ${money(t.prize)}</span>
            <span>👥 ${t.count}/${t.seats}</span>
-           <span class="badge ${t.status}">${STATUS_LABEL[t.status] || t.status}</span>
+           <span class="badge ${BADGE_CLASS[t.status] || t.status}">${STATUS_LABEL[t.status] || t.status}</span>
+           ${when}
          </div>
        </div>
        <span style="font-size:20px;color:var(--tg-hint)">›</span>`;
@@ -688,7 +756,9 @@ function renderTourDetail() {
   $('detail-seats').textContent = `Мест: ${t.players.length}/${t.seats}`;
   const badge = $('detail-status');
   badge.textContent = STATUS_LABEL[t.status] || t.status;
-  badge.className = 'badge ' + t.status;
+  badge.className = 'badge ' + (BADGE_CLASS[t.status] || t.status);
+
+  renderDetailStart(t);
 
   const joined = t.players.some((p) => p.id === state.me?.id);
   const btn = $('detail-join');
@@ -724,6 +794,18 @@ function renderTourDetail() {
   }
 
   renderBracket(t);
+}
+
+function renderDetailStart(t) {
+  const row = $('detail-start');
+  if (t.status === 'registration' && t.startsAt) {
+    row.classList.remove('hidden');
+    row.classList.toggle('missed', t.startsAt <= Date.now() && !!t.startMissed);
+    row.innerHTML = startsAtLine(t);
+  } else {
+    row.classList.add('hidden');
+    row.innerHTML = '';
+  }
 }
 
 function renderBracket(t) {
@@ -785,7 +867,14 @@ function refreshOpenAdminList() {
   for (const t of open) {
     const row = document.createElement('div');
     row.className = 'adm-open-row';
-    row.innerHTML = `<div class="t">${escapeHtml(t.name)}<small>${t.count}/${t.seats} · ${money(t.prize)}</small></div>`;
+    const when = t.startsAt ? startsAtLine(t, false) : 'без расписания';
+    row.innerHTML = `<div class="t">${escapeHtml(t.name)}<small>${t.count}/${t.seats} · ${money(t.prize)} · ${when}</small></div>`;
+    const time = document.createElement('button');
+    time.className = 'mini-btn ghost'; time.textContent = '⏰';
+    time.title = 'Применить время из поля «Время начала» (пустое поле — снять расписание)';
+    time.onclick = () => {
+      state.net?.send({ t: 'tour-set-time', tourId: t.id, startsAt: readAdmTime() || null });
+    };
     const start = document.createElement('button');
     start.className = 'mini-btn'; start.textContent = 'Начать';
     start.disabled = t.count < 2;
@@ -793,7 +882,7 @@ function refreshOpenAdminList() {
     const del = document.createElement('button');
     del.className = 'mini-btn ghost'; del.textContent = '✕';
     del.onclick = () => state.net?.send({ t: 'tour-delete', tourId: t.id });
-    row.append(start, del);
+    row.append(time, start, del);
     box.appendChild(row);
   }
 }
@@ -917,16 +1006,37 @@ document.querySelectorAll('#adm-seats button').forEach((b) => {
     haptic('light');
   });
 });
+// datetime-local gives "YYYY-MM-DDTHH:mm" which the server reads as local time.
+function readAdmTime() { return $('adm-time').value.trim(); }
+function writeAdmTime(date) {
+  const p = (n) => String(n).padStart(2, '0');
+  $('adm-time').value = `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}T${p(date.getHours())}:${p(date.getMinutes())}`;
+}
+
+document.querySelectorAll('#adm-time-presets button').forEach((b) => {
+  b.addEventListener('click', () => {
+    if (b.dataset.clear) $('adm-time').value = '';
+    else writeAdmTime(new Date(Date.now() + Number(b.dataset.min) * 60000));
+    haptic('light');
+  });
+});
+
 $('adm-create').addEventListener('click', async () => {
   const net = await netAuthed();
   if (!net) return toast('Нет соединения');
+  const startsAt = readAdmTime();
+  if (startsAt && new Date(startsAt).getTime() <= Date.now()) {
+    haptic('error');
+    return toast('Время начала должно быть в будущем');
+  }
   net.send({
     t: 'tour-create',
     name: $('adm-name').value.trim() || 'Турнир',
     seats: state.adminSeats,
     prize: Number($('adm-prize').value) || 0,
+    startsAt: startsAt || null,
   });
-  $('adm-name').value = ''; $('adm-prize').value = '';
+  $('adm-name').value = ''; $('adm-prize').value = ''; $('adm-time').value = '';
 });
 
 // claim modal
@@ -969,6 +1079,13 @@ document.querySelectorAll('#set-board-theme button').forEach((b) => {
 });
 
 // ================= boot =================
+// Countdowns on an open screen must not go stale.
+setInterval(() => {
+  if (!$('screen-tournaments').classList.contains('hidden') && state.tours.some((t) => t.startsAt)) renderTourList();
+  const t = state.currentTour;
+  if (!$('screen-tour-detail').classList.contains('hidden') && t?.startsAt && t.status === 'registration') renderDetailStart(t);
+}, 30000);
+
 injectSprite();
 initTelegram();
 loadSettings();
